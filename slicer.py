@@ -93,6 +93,45 @@ done = False
 lastSlop = -1.00
 slop = 0.00
 
+# Initial process: start with the Schwab distribution and
+# iterate to the Motif distribution. Each iteration fixes
+# the stock with the next-highest percentage and evenly
+# distributes the remainder until we've reached the original
+# Motif distribution. We record each iteration for the
+# second pass.
+
+# Will hold the ordered distributions.
+results = []
+
+# Copy the original distribution.
+current = original
+
+# Calculate an even distribution over the keys.
+slots = len(current.keys())
+spendPerSlot = investment / slots
+
+# Invert the original distribution so we can iterate
+# over the stocks in descending precentage order.
+inverted = {}
+for k in current.keys():
+    if current[k] in inverted.keys():
+        inverted[current[k]].append(k)
+    else:
+        inverted[current[k]] = [k]
+# Now go through the inverted Motif in order of
+# percentage descending. Ties are broken arbitrarily
+# but will occur together.
+priority = []
+for k in sorted(inverted.keys(), reverse=True):
+    for stock in inverted[k]:
+        priority.append(stock)
+
+# Debug: verify that the inversion is correct.
+for stock in priority:
+    print("{0}: {1:.2f}".format(stock, original[stock]))
+
+
+
 while not done:
     # Capture the output instead of printing. If the
     # slop doesn't increase with the increased epsilon,

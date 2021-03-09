@@ -1,6 +1,47 @@
 # motif-slicer
 Converts Motif fractional investment setups to buys of Schwab "slices"
 
+    python slicer.py -i $dollar-amount -f motif.yml
+
+where `motif.yml` defines a mapping of stock symbols to percentages:
+
+    # For illustrative purposes only; make your own calls on investments!
+    AAPL: 25.4
+    MSFT: 33.2
+    FB:   10.1
+    AMZN: 32.3
+
+## Sample output
+
+    Autoscaling from 101.00% to 100%
+    Increasing total investment to 10100.00
+    AAPL:	25.1%
+    MSFT:	32.9%
+    FB:	10.0%
+    AMZN:	32.0%
+    ================================================================================
+    Step 1: buy AAPL, MSFT, FB, AMZN at $1010.00
+
+    Drop:	FB
+    --------------------------------------------------------------------------------
+    Step 2: buy AAPL, MSFT, AMZN at $1530.00
+
+    Drop:	AAPL
+    --------------------------------------------------------------------------------
+    Step 3: buy MSFT, AMZN at $690.00
+
+    Drop:	AMZN
+    --------------------------------------------------------------------------------
+    Step 4: buy MSFT at $90.00
+
+    Drop:	MSFT
+    --------------------------------------------------------------------------------
+    Summary:
+    AAPL:	$2540.00
+    MSFT:	$3320.00
+    FB:	$1010.00
+    AMZN:	$3230.00
+
 # Disclaimer
 I am not a financial advisor. Anything you do with your money is your own responsibility.
 I've just built this for my own convenience. If you find it useful, great! Its only
@@ -45,8 +86,13 @@ to this smallest percentage, and then both deletes all the stocks with this perc
 ones by this percentage. Repeat until all of the percentages are used up and there are no more entries in the
 original dict.
 
-## Shortcomings
+# Other considerations
+Schwab (as of 03-2021) only allows stocks in the S&P 500 to be purchased in slices; Motif allowed you to pretty
+much purchase anything. To make the conversion process easier, the script allows the sum of the percentages to
+not be exactly 100% and autoscales the percentages up and the investment down to result in the same final amount
+invested as was invested on Motif.
 
+# Shortcomings
 This makes the buy process mechanically easy, but the selling process is still relatively labor-intensive.
 Unlike Motif, the stocks are no longer associated after purchase, so selling off (say) half of a motif buy
 on Schwab will be one sell per stock. 

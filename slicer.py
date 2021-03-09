@@ -76,7 +76,7 @@ def processCLI():
     shortOpt = 'hi:f:'
     longOpt  = ['investment=', 'file=']
     try:
-        arguments, values = getopt.getopt(sys.argv[1:], shortOpt, longOpt)
+        arguments = getopt.getopt(sys.argv[1:], shortOpt, longOpt)
     except getopt.error as err:
         print(str(err))
         sys.exit(2)
@@ -124,30 +124,46 @@ done = False
 
 priority = []
 inverted = invert(original)
+
+# Construct priority list for stocks. Stocks with higher percentages
+# are considered to be higher priority.
 for p in inverted.keys():
     stocks = inverted[p]
     for stock in stocks:
         priority.append(stock)
 
-# Show the results, and the purchase strategy for each.
+# Show starting percentages (which may hve been autoscaled).
 for stock in priority:
     print("{0}:\t{1:.1f}%".format(stock, original[stock]))
 print("="*80)
+
+# Build the purchase for this set of stocks and display it.
 purchase, dropped = buildPurchase(original)
 step = 0
 for buy in purchase:
     step = step + 1
+    # Stocks dropped at the end of this step.
     drops = dropped.pop(0)
+    # Stocks being bought in this buy.
     stocks = list(buy.keys())
+    # Any stock will do; we just need a valid key to get
+    # the associated percentage. Calculate the dollar amount
+    # to spend this step. Note that Schwab has a $5 minimum
+    # purchase, so we adjust the spend up to $5 if it's less.
+    # We star any adjusted purchase.
     stock = stocks[0]
     purchase = buy[stock]*investment/100
     required = minPurchase(buy[stock]*investment/100)
     note = ""
     if purchase != required:
         note = '*'
+    # Show the buy and stocks to drop for this step.
     print("Step {0}: buy {1} at ${2:.2f}{3}".format(step, ', '.join(stocks), required, note))
     print("\nDrop:\t{0}".format(', '.join(drops)))
     print("-"*80)
+
+# Show a final summary of the amount spent per stock to cross-check against
+# the original motif spreadsheet.
 print("Summary:")
 for stock in priority:
     print("{0}:\t${1:.2f}".format(stock, original[stock]*investment/100))

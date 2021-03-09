@@ -104,3 +104,16 @@ and run the script with the sale amount as the `-investment` argument.
 The last part of the output will show
 the amounts spent to buy that investment amount with the percentages used to create the motif, and you can
 make the sales based on that.
+
+# Notes
+The original version of this script included a section that transformed the percentages
+from the Schwab even percentages to the Motif precise ones, by prioritizing the largest
+percentages and splitting the rest of the purchase evenly across the rest of the stocks,
+with an eye to producing less-precise results, but in fewer steps (e.g., if you choose
+to prioritize the highest-percentage stock and split evenly across the rest, then the
+purchase process is only two steps: buy the recommended percentage of everything, then
+add on extra of the highest-percentage stock). This made the output considerably larger,
+was finicky, and can easily be simulated by adjusting the percentages in the input file.
+
+The process of working out the percentages with buys translated beautifully into Python
+dict comporehensions, and is both compact and highly readable.

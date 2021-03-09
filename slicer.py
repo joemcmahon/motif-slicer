@@ -62,6 +62,13 @@ for arg, val in arguments:
         with open(val) as file:
             original = yaml.full_load(file)
             loaded = True
+            total = 0
+            for k in original.keys():
+                total = total + original[k]
+            total = float("{0:.1f}".format(total))
+            if total > 100.0 or total < 100.0:
+                print("Percentages sum to {0:.2f}".format(total))
+                sys.exit(2)
     if arg in ("-h", '-help'):
         help()
         sys.exit(0)
@@ -71,53 +78,27 @@ if investment is None or not loaded:
     help()
     sys.exit(2)
 
-# If no slop is specified, we'll just do what we need to do to
-# duplicate the original buy.
-if maxSlop is None:
-    maxSlop = 0.00
-
-# width of the percentage window
-epsilon = 0.0
-
-# Saves deltas between the percentage sizes
-deltas = []
-
-# First run through we capture the deltas;
-# subsequent times we'll pop one off and use it.
-# We stop when we're at the final (no changes) delta.
-first = True
-done = False
-
-# Lets us skip displaying an iteration if the slop hasn't
-# increased.
-lastSlop = -1.00
-slop = 0.00
-
 # Initial process: start with the Schwab distribution and
-# iterate to the Motif distribution. Each iteration fixes
-# the stock with the next-highest percentage and evenly
-# distributes the remainder until we've reached the original
-# Motif distribution. We record each iteration for the
+# iterate to the Motif distribution. We operate in percentages
+# to prevent propagation of floating-point imprecision.
+# Each iteration fixes the stock with the next-highest percentage
+# and evenly distributes the remainder until we've reached the
+# original Motif distribution. We record each iteration for the
 # second pass.
 
-# Will hold the ordered distributions.
-results = []
-
-# Copy the original distribution.
-current = original
-
 # Calculate an even distribution over the keys.
-slots = len(current.keys())
+slots = len(original.keys())
 spendPerSlot = investment / slots
 
 # Invert the original distribution so we can iterate
 # over the stocks in descending precentage order.
 inverted = {}
-for k in current.keys():
-    if current[k] in inverted.keys():
-        inverted[current[k]].append(k)
+for k in original.keys():
+    if original[k] in inverted.keys():
+        inverted[original[k]].append(k)
     else:
-        inverted[current[k]] = [k]
+        inverted[original[k]] = [k]
+
 # Now go through the inverted Motif in order of
 # percentage descending. Ties are broken arbitrarily
 # but will occur together.
@@ -125,116 +106,64 @@ priority = []
 for k in sorted(inverted.keys(), reverse=True):
     for stock in inverted[k]:
         priority.append(stock)
+percent = []
+for k in priority:
+    percent.append(original[k])
 
-# Debug: verify that the inversion is correct.
-for stock in priority:
-    print("{0}: {1:.2f}".format(stock, original[stock]))
+results = []
 
+# First result is an even split. (Schwab)
+results.append({})
+for s in priority:
+    results[0][s] = 100.0 / len(priority)
+# Last result splits by percentages given. (Motif)
+motif = {}
+for s in priority:
+    motif[s] = original[s]
 
+# Subsequent results fix the spend in priority order,
+# then divide the remaining investment into the rest
+# of the slots.
+nextResult = 0
+fixedPoint = -1
+done = False
 
 while not done:
-    # Capture the output instead of printing. If the
-    # slop doesn't increase with the increased epsilon,
-    # there's no point in showing the output.
-    output = []
+    nextResult = nextResult + 1
+    fixedPoint = fixedPoint + 1
 
-    # Step counter shows us the step we're at in buying the
-    # slices to recreate the motif distribution.
-    step = 1
+    # Calculate items left to evenly fill.
+    size = len(priority) - fixedPoint - 1
+    if size == 1:
+        break
 
-    # Sums up the amount spent in purchasing the slice using
-    # the current plan. Compared to the investment amount to
-    # see how much slop has been introduced.
-    totalizedInvestment = 0.0
+    # New result set
+    results.append({})
 
-    # Used to print the final summary report of the distribution
-    # for each iteration.
-    spendage = {}
+    # Copy the current fixed points into the new result.
+    used = 0
+    i = fixedPoint
+    for i in range(0, fixedPoint+1):
+        stock = priority[i]
+        results[nextResult][stock] = percent[i]
+        used = used + percent[i]
 
-    # Always start with a copy of the original distribution.
-    motif = original.copy()
+    # Calculate the fixed amount spent, and the remaining
+    # to be split evenly.
+    remaining = 100.0 - used
 
-    # Find and remove the lowest percentages in the epsilon
-    # window until there are no stocks left to purchase.
-    while motif.keys():
-      # Find minimum percentage.
-      minstock = ""
-      minpercent = 100.0
-      for k in motif.keys():
-          if motif[k] < minpercent:
-              minstock = k
-              minpercent = motif[k]
-      # Record the deltas on the initial iteration.
-      if first:
-          deltas.append(minpercent)
-      # The step cost is how much this iteration's purchase of
-      # the slice should cost.
-      stepCost =  investment * minpercent/100
+    slice = remaining / size
 
-      # Schwab rule: the minimum spend on a slice is $5.00.
-      # If the step cost would be less than that, we've got
-      # to add some slop to make this step bigger.
+    for i in range(fixedPoint+1, len(priority)):
+        stock = priority[i]
+        results[nextResult][stock] = slice
 
-      # Add the current steps's cost to the total.
-      totalizedInvestment = totalizedInvestment + stepCost * len(motif.keys())
+results.append(motif)
 
-      # Save the step header.
-      output.append("Step {0}: ${1:.2f}".format(step, stepCost))
-      dropped = []
+for result in results:
+    for stock in priority:
+        print("{0}: {1}".format(stock, result[stock]))
+    print("-"*80)
 
-      # Calcualte the amount we should spend for each stock in this
-      # step of the slice purchase.
-      size = len(motif.keys())
-      spendForKey = stepCost / size
 
-      # Add this to the total spent for each of the stocks so far.
-      # Drop any stock whose percentage is in the current minimum
-      # percentage window.
-      for k in list(motif):
-        if k not in spendage:
-            spendage[k] = 0
-        spendage[k] = spendage[k] + stepCost
-        percent = motif[k]
-        if percent >=  minpercent - epsilon and percent <= minpercent + epsilon:
-            dropped.append(k)
-            motif.pop(k, None)
-        else:
-            motif[k] = motif[k] - minpercent
-      # Add a report of the stocks to remove from the slice for the next
-      # purchase.
-      output.append("Drop: {0}".format(', '.join(dropped)))
-
-      # Moving on to the next step.
-      step = step + 1
-
-    # Iteration complete. Figure out how close we were to the desired investment.
-    # Add this to the top to make it easy to decide how good this iteration was.
-    slop = abs(investment - totalizedInvestment)
-    output.insert(0,("${0:.2f} ({1:.2f}%) slop\n".format(slop, slop/investment*100)))
-    # Show how much was spent per stock symbol.
-    for k in spendage.keys():
-        output.append("{0}\t${1:.2f}".format(k, spendage[k]))
-    # Divider line.
-    output.append("-"*80)
-
-    # Turn off recording of the deltas, since we've already got all of them.
-    first = False
-
-    # If the slop has increased  over the last time around, print the report.
-    # Record the current slop so we can check if it increased on the next iteration.
-    if slop > lastSlop:
-        for line in output:
-            print(line)
-    lastSlop = slop
-
-    # If the slop hasn't exceeded the limit, make the window bigger (causing us
-    # to delete more stocks on each loop doing the spend). This will eventually
-    # increase the slop to the limit, or if the limit is set too high, we'll
-    # eventually stop when we run out of deltas.
-    if slop <= maxSlop:
-        if len(deltas) > 0:
-            epsilon = epsilon + deltas.pop(0)
-        else:
-            done = True
-    else:
-        done = True
+sys.exit(0)

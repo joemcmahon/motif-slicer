@@ -88,13 +88,6 @@ def processCLI():
             with open(val) as file:
                 original = yaml.full_load(file)
                 loaded = True
-                total = 0
-                for k in original.keys():
-                    total = total + original[k]
-                total = float("{0:.1f}".format(total))
-                if total > 100.0 or total < 100.0:
-                    print("Percentages sum to {0:.2f}".format(total))
-                    sys.exit(2)
         if arg in ("-h", '-help'):
             help()
             sys.exit(0)
@@ -103,6 +96,17 @@ def processCLI():
         print("Insufficient arguments:")
         help()
         sys.exit(2)
+    total = 0
+    for k in original.keys():
+        total = total + original[k]
+    total = float("{0:.1f}".format(total))
+    if total != 100.0:
+        print ("Autoscaling from {0:.2f}% to 100%".format(total))
+        factor = 100.0/total
+        for k in original.keys():
+            original[k] = original[k] * factor
+        investment = investment / factor
+        print("Reducing total investment to {0:.2f}".format(investment))
     return original, investment
 
 # Initial process: start with the Schwab distribution and
@@ -127,11 +131,12 @@ for p in inverted.keys():
 
 # Show the results, and the purchase strategy for each.
 for stock in priority:
-    print("{0}:\t{1}%".format(stock, original[stock]))
+    print("{0}:\t{1:.1f}%".format(stock, original[stock]))
 print("="*80)
 purchase, dropped = buildPurchase(original)
-step = 1
+step = 0
 for buy in purchase:
+    step = step + 1
     drops = dropped.pop(0)
     stocks = list(buy.keys())
     stock = stocks[0]
@@ -143,5 +148,8 @@ for buy in purchase:
     print("Step {0}: buy {1} at ${2:.2f}{3}".format(step, ', '.join(stocks), required, note))
     print("\nDrop:\t{0}".format(', '.join(drops)))
     print("-"*80)
+print("Summary:")
+for stock in priority:
+    print("{0}:\t${1:.2f}".format(stock, original[stock]*investment/100))
 
 sys.exit(0)

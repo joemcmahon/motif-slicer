@@ -8,9 +8,8 @@ the distribution that was in the original motif.
 The following multi-step process reproduces the distribution:
     - For each step:
         - Find the stock that is the smallest contribution (in percent)
-          to the total purchase, and calculate how much that percentage
-          is in dollars. This is the amount we'll need to spend on each
-          of the remaining stocks in this step.
+          to the total purchase. This is the percentage we will need to
+          spend in this step on the remaining stocks.
         - Display this purchase.
         - Remove the stock and any others at this percentage from the
           list of stocks.
@@ -20,21 +19,6 @@ The following multi-step process reproduces the distribution:
 This may take a number of steps if the motif had a lot of stocks in it
 with different percentages (worst case, there will need to be a step
 for each stock in the motif).
-
-The script will allow you to compensate for this by specifying a
-maximum "slop" amount. The "slop" is expressed as a dollar amount you're
-willing to accept as over or under the original motif's dollar cost;
-the script can keep increasing the window size it uses to determine
-"stock is at the same percentage", matching more stocks per step and
-thereby reducing the number of steps required to complete the purchase,
-at the expense of less-precisely duplicating the original motif's
-percentages.
-
-If a slop amount is provided, the script will keep recalculating sets
-of purchase steps until either it reaches the slop amount or it runs
-out of steps to compress, and just makes a one-step buy that divides
-the amount spent equally across all the stocks (the same as if you'd
-created the slice, and then spent the requisite amount on it).
 """
 
 def buildPurchase(results):
@@ -48,6 +32,8 @@ def buildPurchase(results):
     inverted = invert(results)
     percents = sorted(inverted.keys())
     purchases = []
+    dropped = []
+    lastBuy = results.keys()
 
     while len(results.keys())> 0:
         # Find the smallest contributor to the final result
@@ -56,13 +42,17 @@ def buildPurchase(results):
         purchases.append({key: smallest for (key, value) in results.items()})
         # subtract percentage from all items in result, dropping zeroed items
         results = {k:v-smallest for (k,v) in results.items() if v != smallest}
+        # Determine items dropped this time
+        currentBuy = results.keys()
+        dropped.append([v for v in lastBuy if v not in currentBuy])
+        lastBuy = currentBuy
         # Reduce percentages left to purchase by amount already purchased
         percents = [v-smallest for v in percents]
 
-    return purchases
+    return purchases, dropped
 
 def help():
-    print("slicer.py -investment dollars -maxslop dollars -file motif.yaml")
+    print("slicer.py -investment dollars -file motif.yaml")
 
 def invert(original):
     """
@@ -78,8 +68,8 @@ def invert(original):
     return inverted
 
 def processCLI():
-    shortOpt = 'hi:m:f:'
-    longOpt  = ['investment=', 'maxslop=', 'file=']
+    shortOpt = 'hi:f:'
+    longOpt  = ['investment=', 'file=']
     try:
         arguments, values = getopt.getopt(sys.argv[1:], shortOpt, longOpt)
     except getopt.error as err:
@@ -89,8 +79,6 @@ def processCLI():
     for arg, val in arguments:
         if arg in ("-i", "-investment"):
             investment = float(val)
-        if arg in ("-m", "-maxslop"):
-            maxSlop = float(val)
         if arg in ('-f', '-file'):
             with open(val) as file:
                 original = yaml.full_load(file)
@@ -110,7 +98,7 @@ def processCLI():
         print("Insufficient arguments:")
         help()
         sys.exit(2)
-    return original, investment, maxSlop
+    return original, investment
 
 # Initial process: start with the Schwab distribution and
 # iterate to the Motif distribution. We operate in percentages
@@ -119,77 +107,30 @@ def processCLI():
 # and evenly distributes the remainder until we've reached the
 # original Motif distribution. We record each iteration for the
 # second pass.
-original, investment, maxSlop = processCLI()
-
-# Invert the original distribution so we can iterate
-# over the stocks in descending percentage order.
-inverted = invert(original)
-
-# Determine priority to purchase stocks. Stocks with the
-# highest percentage are considered more important than
-# the smaller contributors.
-priority = []
-for k in sorted(inverted.keys(), reverse=True):
-    for stock in inverted[k]:
-        priority.append(stock)
-# Get a list of the percentages in priority order as well.
-percent = []
-for k in priority:
-    percent.append(original[k])
-
-results = []
-
-# First result is an even split. (Schwab)
-fixedPercentage = 100.0 / len(priority)
-results.append({k:fixedPercentage for (k,v) in original.items()})
+original, investment = processCLI()
 
 nextResult = 0
 fixedPoint = -1
 done = False
 
-while not done:
-    fixedPoint = fixedPoint + 1
-
-    # Calculate items left to evenly fill.
-    size = len(priority) - fixedPoint - 1
-    if size == 1:
-        break
-
-    # New result set
-    result = {}
-
-    # Copy the current fixed points into the new result.
-    # Calculate the total fixed percentage as we set it up.
-    used = 0
-    i = fixedPoint
-    for i in range(0, fixedPoint+1):
-        stock = priority[i]
-        result[stock] = percent[i]
-        used = used + percent[i]
-
-    # Calculate the fixed amount spent, and the remaining
-    # to be split evenly.
-    remaining = 100.0 - used
-
-    # Figure out the even split for the rest of the slice.
-    split = remaining / size
-
-    for i in range(fixedPoint+1, len(priority)):
-        stock = priority[i]
-        result[stock] = split
-
-    # Save the current result.
-    results.append(result.copy())
-
-# Add the original version to the result.
-results.append(original)
+priority = []
+inverted = invert(original)
+for p in inverted.keys():
+    stocks = inverted[p]
+    for stock in stocks:
+        priority.append(stock)
 
 # Show the results, and the purchase strategy for each.
-for result in results:
+for stock in priority:
+    print("{0}:\t{1}%".format(stock, original[stock]))
+print("="*80)
+purchase, dropped = buildPurchase(original)
+for buy in purchase:
+    drops = dropped.pop(0)
     for stock in priority:
-        print("{0}: {1}".format(stock, result[stock]))
+        if stock in buy.keys():
+            print("{0}:\t${1:.2f}".format(stock, buy[stock]*investment/100))
+    print("\nDrop:\t{0}".format(', '.join(drops)))
     print("-"*80)
-    print(buildPurchase(result.copy()))
-    print("="*80)
 
 sys.exit(0)

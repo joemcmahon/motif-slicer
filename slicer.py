@@ -37,46 +37,80 @@ the amount spent equally across all the stocks (the same as if you'd
 created the slice, and then spent the requisite amount on it).
 """
 
-# Ensure our variables are marked uninitialized
-investment = None
-maxSlop = None
-loaded = False
+def buildPurchase(results):
+    """
+    buildPurchase takes the dict of stock-to-percentage
+    mappings and constructs a set of slice purchases that
+    will total up to the full amount.
+    """
+
+    # Find the smallest percentages in the struct.
+    inverted = invert(results)
+    percents = sorted(inverted.keys())
+    purchases = []
+
+    while len(results.keys())> 0:
+        # Find the smallest contributor to the final result
+        smallest =  percents.pop(0)
+        # Buy this much of everything left in result, saving it
+        purchases.append({key: smallest for (key, value) in results.items()})
+        # subtract percentage from all items in result, dropping zeroed items
+        results = {k:v-smallest for (k,v) in results.items() if v != smallest}
+        # Reduce percentages left to purchase by amount already purchased
+        percents = [v-smallest for v in percents]
+
+    return purchases
 
 def help():
     print("slicer.py -investment dollars -maxslop dollars -file motif.yaml")
 
-shortOpt = 'hi:m:f:'
-longOpt  = ['investment=', 'maxslop=', 'file=']
-try:
-    arguments, values = getopt.getopt(sys.argv[1:], shortOpt, longOpt)
-except getopt.error as err:
-    print(str(err))
-    sys.exit(2)
+def invert(original):
+    """
+    Invert a dict, making the values the keys. The old keys are
+    stored as lists so that collisions are kept.
+    """
+    inverted = {}
+    for k in original.keys():
+        if original[k] in inverted.keys():
+            inverted[original[k]].append(k)
+        else:
+            inverted[original[k]] = [k]
+    return inverted
 
-for arg, val in arguments:
-    if arg in ("-i", "-investment"):
-        investment = float(val)
-    if arg in ("-m", "-maxslop"):
-        maxSlop = float(val)
-    if arg in ('-f', '-file'):
-        with open(val) as file:
-            original = yaml.full_load(file)
-            loaded = True
-            total = 0
-            for k in original.keys():
-                total = total + original[k]
-            total = float("{0:.1f}".format(total))
-            if total > 100.0 or total < 100.0:
-                print("Percentages sum to {0:.2f}".format(total))
-                sys.exit(2)
-    if arg in ("-h", '-help'):
+def processCLI():
+    shortOpt = 'hi:m:f:'
+    longOpt  = ['investment=', 'maxslop=', 'file=']
+    try:
+        arguments, values = getopt.getopt(sys.argv[1:], shortOpt, longOpt)
+    except getopt.error as err:
+        print(str(err))
+        sys.exit(2)
+
+    for arg, val in arguments:
+        if arg in ("-i", "-investment"):
+            investment = float(val)
+        if arg in ("-m", "-maxslop"):
+            maxSlop = float(val)
+        if arg in ('-f', '-file'):
+            with open(val) as file:
+                original = yaml.full_load(file)
+                loaded = True
+                total = 0
+                for k in original.keys():
+                    total = total + original[k]
+                total = float("{0:.1f}".format(total))
+                if total > 100.0 or total < 100.0:
+                    print("Percentages sum to {0:.2f}".format(total))
+                    sys.exit(2)
+        if arg in ("-h", '-help'):
+            help()
+            sys.exit(0)
+
+    if investment is None or not loaded:
+        print("Insufficient arguments:")
         help()
-        sys.exit(0)
-
-if investment is None or not loaded:
-    print("Insufficient arguments:")
-    help()
-    sys.exit(2)
+        sys.exit(2)
+    return original, investment, maxSlop
 
 # Initial process: start with the Schwab distribution and
 # iterate to the Motif distribution. We operate in percentages
@@ -85,27 +119,20 @@ if investment is None or not loaded:
 # and evenly distributes the remainder until we've reached the
 # original Motif distribution. We record each iteration for the
 # second pass.
-
-# Calculate an even distribution over the keys.
-slots = len(original.keys())
-spendPerSlot = investment / slots
+original, investment, maxSlop = processCLI()
 
 # Invert the original distribution so we can iterate
-# over the stocks in descending precentage order.
-inverted = {}
-for k in original.keys():
-    if original[k] in inverted.keys():
-        inverted[original[k]].append(k)
-    else:
-        inverted[original[k]] = [k]
+# over the stocks in descending percentage order.
+inverted = invert(original)
 
-# Now go through the inverted Motif in order of
-# percentage descending. Ties are broken arbitrarily
-# but will occur together.
+# Determine priority to purchase stocks. Stocks with the
+# highest percentage are considered more important than
+# the smaller contributors.
 priority = []
 for k in sorted(inverted.keys(), reverse=True):
     for stock in inverted[k]:
         priority.append(stock)
+# Get a list of the percentages in priority order as well.
 percent = []
 for k in priority:
     percent.append(original[k])
@@ -113,23 +140,14 @@ for k in priority:
 results = []
 
 # First result is an even split. (Schwab)
-results.append({})
-for s in priority:
-    results[0][s] = 100.0 / len(priority)
-# Last result splits by percentages given. (Motif)
-motif = {}
-for s in priority:
-    motif[s] = original[s]
+fixedPercentage = 100.0 / len(priority)
+results.append({k:fixedPercentage for (k,v) in original.items()})
 
-# Subsequent results fix the spend in priority order,
-# then divide the remaining investment into the rest
-# of the slots.
 nextResult = 0
 fixedPoint = -1
 done = False
 
 while not done:
-    nextResult = nextResult + 1
     fixedPoint = fixedPoint + 1
 
     # Calculate items left to evenly fill.
@@ -138,32 +156,40 @@ while not done:
         break
 
     # New result set
-    results.append({})
+    result = {}
 
     # Copy the current fixed points into the new result.
+    # Calculate the total fixed percentage as we set it up.
     used = 0
     i = fixedPoint
     for i in range(0, fixedPoint+1):
         stock = priority[i]
-        results[nextResult][stock] = percent[i]
+        result[stock] = percent[i]
         used = used + percent[i]
 
     # Calculate the fixed amount spent, and the remaining
     # to be split evenly.
     remaining = 100.0 - used
 
-    slice = remaining / size
+    # Figure out the even split for the rest of the slice.
+    split = remaining / size
 
     for i in range(fixedPoint+1, len(priority)):
         stock = priority[i]
-        results[nextResult][stock] = slice
+        result[stock] = split
 
-results.append(motif)
+    # Save the current result.
+    results.append(result.copy())
 
+# Add the original version to the result.
+results.append(original)
+
+# Show the results, and the purchase strategy for each.
 for result in results:
     for stock in priority:
         print("{0}: {1}".format(stock, result[stock]))
     print("-"*80)
-
+    print(buildPurchase(result.copy()))
+    print("="*80)
 
 sys.exit(0)

@@ -76,7 +76,7 @@ def processCLI():
     shortOpt = 'hi:f:'
     longOpt  = ['investment=', 'file=']
     try:
-        arguments = getopt.getopt(sys.argv[1:], shortOpt, longOpt)
+        arguments, values = getopt.getopt(sys.argv[1:], shortOpt, longOpt)
     except getopt.error as err:
         print(str(err))
         sys.exit(2)
@@ -106,7 +106,11 @@ def processCLI():
         for k in original.keys():
             original[k] = original[k] * factor
         investment = investment / factor
-        print("Reducing total investment to {0:.2f}".format(investment))
+        if factor < 1.0:
+            which = "Increasing"
+        else:
+            which = "Reducing"
+        print("{0} total investment to {1:.2f}".format(which, investment))
     return original, investment
 
 # Initial process: start with the Schwab distribution and

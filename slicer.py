@@ -51,6 +51,11 @@ def buildPurchase(results):
 
     return purchases, dropped
 
+def minPurchase(amount):
+    if amount < 5.00:
+        return 5.00
+    return amount
+
 def help():
     print("slicer.py -investment dollars -file motif.yaml")
 
@@ -125,11 +130,17 @@ for stock in priority:
     print("{0}:\t{1}%".format(stock, original[stock]))
 print("="*80)
 purchase, dropped = buildPurchase(original)
+step = 1
 for buy in purchase:
     drops = dropped.pop(0)
-    for stock in priority:
-        if stock in buy.keys():
-            print("{0}:\t${1:.2f}".format(stock, buy[stock]*investment/100))
+    stocks = list(buy.keys())
+    stock = stocks[0]
+    purchase = buy[stock]*investment/100
+    required = minPurchase(buy[stock]*investment/100)
+    note = ""
+    if purchase != required:
+        note = '*'
+    print("Step {0}: buy {1} at ${2:.2f}{3}".format(step, ', '.join(stocks), required, note))
     print("\nDrop:\t{0}".format(', '.join(drops)))
     print("-"*80)
 
